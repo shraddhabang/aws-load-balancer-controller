@@ -220,6 +220,7 @@ type defaultModelBuildTask struct {
 }
 
 func (t *defaultModelBuildTask) run(ctx context.Context) error {
+	t.logger.Info("I am building Model now", "t.ingGroup", t.ingGroup)
 	for _, inactiveMember := range t.ingGroup.InactiveMembers {
 		if !inactiveMember.DeletionTimestamp.IsZero() {
 			deletionProtectionEnabled, err := t.getDeletionProtectionViaAnnotation(inactiveMember)
@@ -233,6 +234,11 @@ func (t *defaultModelBuildTask) run(ctx context.Context) error {
 	}
 	if len(t.ingGroup.Members) == 0 {
 		return nil
+	}
+
+	externalLBArn, err := t.getExternalLoadBalancerArn(ctx)
+	if err != nil {
+		return err
 	}
 
 	ingListByPort := make(map[int64][]ClassifiedIngress)
@@ -261,11 +267,20 @@ func (t *defaultModelBuildTask) run(ctx context.Context) error {
 		listenPortConfigByPort[port] = mergedCfg
 	}
 
-	lb, err := t.buildLoadBalancer(ctx, listenPortConfigByPort)
-	if err != nil {
-		return err
+	var lb *elbv2model.LoadBalancer
+	if externalLBArn == nil {
+		lbCreated, err := t.buildLoadBalancer(ctx, listenPortConfigByPort)
+		if err != nil {
+			return err
+		}
+		lb = lbCreated
+	} else {
+		lbCreated, err := t.buildExternalLoadBalancer(ctx, listenPortConfigByPort)
+		if err != nil {
+			return err
+		}
+		lb = lbCreated
 	}
-
 	t.sslRedirectConfig, err = t.buildSSLRedirectConfig(ctx, listenPortConfigByPort)
 	if err != nil {
 		return err

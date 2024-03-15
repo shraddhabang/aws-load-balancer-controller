@@ -43,7 +43,7 @@ func (t *defaultModelBuildTask) buildLoadBalancer(ctx context.Context, scheme el
 	if err != nil {
 		return err
 	}
-	t.loadBalancer = elbv2model.NewLoadBalancer(t.stack, resourceIDLoadBalancer, spec)
+	t.loadBalancer = elbv2model.NewLoadBalancer(t.stack, resourceIDLoadBalancer, spec, false)
 	return nil
 }
 

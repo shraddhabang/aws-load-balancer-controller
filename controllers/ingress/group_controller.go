@@ -120,6 +120,7 @@ func (r *groupReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 func (r *groupReconciler) reconcile(ctx context.Context, req ctrl.Request) error {
 	ingGroupID := ingress.DecodeGroupIDFromReconcileRequest(req)
+	r.logger.Info("starting reconcile", "ingGroupID", ingGroupID)
 	ingGroup, err := r.groupLoader.Load(ctx, ingGroupID)
 	if err != nil {
 		return err
@@ -129,6 +130,7 @@ func (r *groupReconciler) reconcile(ctx context.Context, req ctrl.Request) error
 		r.recordIngressGroupEvent(ctx, ingGroup, corev1.EventTypeWarning, k8s.IngressEventReasonFailedAddFinalizer, fmt.Sprintf("Failed add finalizer due to %v", err))
 		return err
 	}
+	r.logger.Info("starting buildAndDeployModel", "ingGroupID", ingGroupID)
 	_, lb, err := r.buildAndDeployModel(ctx, ingGroup)
 	if err != nil {
 		return err

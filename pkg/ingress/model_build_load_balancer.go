@@ -34,7 +34,13 @@ func (t *defaultModelBuildTask) buildLoadBalancer(ctx context.Context, listenPor
 	if err != nil {
 		return nil, err
 	}
-	lb := elbv2model.NewLoadBalancer(t.stack, resourceIDLoadBalancer, lbSpec)
+	lb := elbv2model.NewLoadBalancer(t.stack, resourceIDLoadBalancer, lbSpec, false)
+	t.loadBalancer = lb
+	return lb, nil
+}
+
+func (t *defaultModelBuildTask) buildExternalLoadBalancer(ctx context.Context, listenPortConfigByPort map[int64]listenPortConfig) (*elbv2model.LoadBalancer, error) {
+	lb := elbv2model.NewLoadBalancer(t.stack, resourceIDLoadBalancer, elbv2model.LoadBalancerSpec{}, true)
 	t.loadBalancer = lb
 	return lb, nil
 }
@@ -86,6 +92,33 @@ func (t *defaultModelBuildTask) buildLoadBalancerSpec(ctx context.Context, liste
 }
 
 var invalidLoadBalancerNamePattern = regexp.MustCompile("[[:^alnum:]]")
+
+// buildLoadBalancerIPAddressType builds the LoadBalancer IPAddressType.
+func (t *defaultModelBuildTask) getExternalLoadBalancerArn(_ context.Context) (*string, error) {
+	explicitExternalLoadBalancerArns := sets.NewString()
+	for _, member := range t.ingGroup.Members {
+		//if member.IngClassConfig.IngClassParams != nil && member.IngClassConfig.IngClassParams.Spec.IPAddressType != nil {
+		//	ipAddressType := string(*member.IngClassConfig.IngClassParams.Spec.IPAddressType)
+		//	explicitExternalLbArn.Insert(ipAddressType)
+		//	continue
+		//}
+		rawExternalLoadBalancerArn := ""
+		if exists := t.annotationParser.ParseStringAnnotation(annotations.IngressSuffixExternalManagedLoadBalancerARN, &rawExternalLoadBalancerArn, member.Ing.Annotations); !exists {
+			continue
+		}
+		explicitExternalLoadBalancerArns.Insert(rawExternalLoadBalancerArn)
+	}
+	if len(explicitExternalLoadBalancerArns) == 0 {
+		return nil, nil
+	}
+	if len(explicitExternalLoadBalancerArns) > 1 {
+		return nil, errors.Errorf("conflicting External Load balancer Arns: %v", explicitExternalLoadBalancerArns.List())
+	}
+	rawExternalLoadBalancerArn, _ := explicitExternalLoadBalancerArns.PopAny()
+	//TODO validate arn
+
+	return awssdk.String(rawExternalLoadBalancerArn), nil
+}
 
 func (t *defaultModelBuildTask) buildLoadBalancerName(_ context.Context, scheme elbv2model.LoadBalancerScheme) (string, error) {
 	explicitNames := sets.String{}

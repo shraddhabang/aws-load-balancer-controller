@@ -15,20 +15,25 @@ type LoadBalancer struct {
 	// desired state of LoadBalancer
 	Spec LoadBalancerSpec `json:"spec"`
 
+	External bool `json:"external,omitempty"`
+
 	// observed state of LoadBalancer
 	// +optional
 	Status *LoadBalancerStatus `json:"status,omitempty"`
 }
 
 // NewLoadBalancer constructs new LoadBalancer resource.
-func NewLoadBalancer(stack core.Stack, id string, spec LoadBalancerSpec) *LoadBalancer {
+func NewLoadBalancer(stack core.Stack, id string, spec LoadBalancerSpec, isExternal bool) *LoadBalancer {
 	lb := &LoadBalancer{
 		ResourceMeta: core.NewResourceMeta(stack, "AWS::ElasticLoadBalancingV2::LoadBalancer", id),
 		Spec:         spec,
+		External:     isExternal,
 		Status:       nil,
 	}
 	stack.AddResource(lb)
-	lb.registerDependencies(stack)
+	if isExternal == false {
+		lb.registerDependencies(stack)
+	}
 	return lb
 }
 
