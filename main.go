@@ -186,7 +186,7 @@ func main() {
 	}
 
 	if nlbGatewayEnabled {
-		routeLoader := routeutils.NewLoader(mgr.GetClient())
+		routeLoader := routeutils.NewLoader(mgr.GetClient(), ctrl.Log.WithName("nlb-route-loader"))
 		nlbGatewayReconciler := gateway.NewNLBGatewayReconciler(routeLoader, cloud, mgr.GetClient(), mgr.GetEventRecorderFor("nlbgateway"), controllerCFG, finalizerManager, sgReconciler, sgManager, elbv2TaggingManager, subnetResolver, vpcInfoProvider, backendSGProvider, sgResolver, ctrl.Log.WithName("controllers").WithName("nlbgateway"), lbcMetricsCollector, reconcileCounters)
 		nlbControllerError := nlbGatewayReconciler.SetupWithManager(mgr)
 		if nlbControllerError != nil {
@@ -195,7 +195,7 @@ func main() {
 		}
 	}
 	if albGatewayEnabled {
-		routeLoader := routeutils.NewLoader(mgr.GetClient())
+		routeLoader := routeutils.NewLoader(mgr.GetClient(), ctrl.Log.WithName("alb-route-loader"))
 		albGatewayReconciler := gateway.NewALBGatewayReconciler(routeLoader, cloud, mgr.GetClient(), mgr.GetEventRecorderFor("albgateway"), controllerCFG, finalizerManager, sgReconciler, sgManager, elbv2TaggingManager, subnetResolver, vpcInfoProvider, backendSGProvider, sgResolver, ctrl.Log.WithName("controllers").WithName("albgateway"), lbcMetricsCollector, reconcileCounters)
 		albControllerErr := albGatewayReconciler.SetupWithManager(mgr)
 		if albControllerErr != nil {

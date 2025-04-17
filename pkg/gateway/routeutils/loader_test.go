@@ -2,6 +2,7 @@ package routeutils
 
 import (
 	"context"
+	"github.com/go-logr/logr"
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -203,6 +204,7 @@ func TestLoadRoutesForGateway(t *testing.T) {
 					mapToReturn:    tc.expectedPreloadMap,
 				},
 				allRouteLoaders: allRouteLoaders,
+				logger:          logr.Discard(),
 			}
 
 			filter := &routeFilterImpl{acceptedKinds: tc.acceptedKinds}
