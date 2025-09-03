@@ -220,7 +220,7 @@ type AuthenticateOidcActionConfig struct {
 	// +kubebuilder:default=604800
 	// +kubebuilder:validation:Minimum=1
 	// +kubebuilder:validation:Maximum=604800
-	SessionTimeout *int32 `json:"sessionTimeout,omitempty"`
+	SessionTimeout *int64 `json:"sessionTimeout,omitempty"`
 
 	// Indicates whether to use the existing client secret when modifying a listener rule. If
 	// you are creating a listener rule, you can omit this parameter or set it to false.

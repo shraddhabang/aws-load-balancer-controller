@@ -147,7 +147,7 @@ func (in *AuthenticateOidcActionConfig) DeepCopyInto(out *AuthenticateOidcAction
 	}
 	if in.SessionTimeout != nil {
 		in, out := &in.SessionTimeout, &out.SessionTimeout
-		*out = new(int32)
+		*out = new(int64)
 		**out = **in
 	}
 	if in.UseExistingClientSecret != nil {

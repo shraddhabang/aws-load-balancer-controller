@@ -14,8 +14,8 @@ import (
 
 func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 	type monitorSecretsCall struct {
-		groupID string
-		secrets []types.NamespacedName
+		consumerID string
+		secrets    []types.NamespacedName
 	}
 	tests := []struct {
 		testName           string
@@ -26,10 +26,10 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 			testName: "No secrets",
 		},
 		{
-			testName: "Single group",
+			testName: "Single Ingress consumer",
 			monitorSecretsCall: []monitorSecretsCall{
 				{
-					groupID: "group1",
+					consumerID: "ig-group1",
 					secrets: []types.NamespacedName{
 						{Name: "secret-1", Namespace: "ns-1"},
 					},
@@ -40,10 +40,10 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 			},
 		},
 		{
-			testName: "Single group, multiple secrets",
+			testName: "Single ingress consumer, multiple secrets",
 			monitorSecretsCall: []monitorSecretsCall{
 				{
-					groupID: "group1",
+					consumerID: "ig-group1",
 					secrets: []types.NamespacedName{
 						{Name: "secret-1", Namespace: "ns-1"},
 						{Name: "secret-2", Namespace: "ns-2"},
@@ -58,10 +58,10 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 			},
 		},
 		{
-			testName: "Multiple group, overlapping secrets",
+			testName: "Multiple consumers, mix of ingress and gateway, overlapping secrets",
 			monitorSecretsCall: []monitorSecretsCall{
 				{
-					groupID: "group1",
+					consumerID: "ig-group1",
 					secrets: []types.NamespacedName{
 						{Name: "secret-1", Namespace: "ns-1"},
 						{Name: "secret-2", Namespace: "ns-2"},
@@ -69,7 +69,7 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 					},
 				},
 				{
-					groupID: "group2",
+					consumerID: "gw-1",
 					secrets: []types.NamespacedName{
 						{Name: "secret-2", Namespace: "ns-2"},
 						{Name: "secret-3", Namespace: "ns-3"},
@@ -85,10 +85,10 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 			},
 		},
 		{
-			testName: "Multiple group, with deletion",
+			testName: "Multiple ingress consumers, with deletion",
 			monitorSecretsCall: []monitorSecretsCall{
 				{
-					groupID: "group1",
+					consumerID: "group1",
 					secrets: []types.NamespacedName{
 						{Name: "secret-1", Namespace: "ns-1"},
 						{Name: "secret-2", Namespace: "ns-2"},
@@ -96,7 +96,7 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 					},
 				},
 				{
-					groupID: "group2",
+					consumerID: "group2",
 					secrets: []types.NamespacedName{
 						{Name: "secret-2", Namespace: "ns-2"},
 						{Name: "secret-3", Namespace: "ns-3"},
@@ -104,7 +104,7 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 					},
 				},
 				{
-					groupID: "group1",
+					consumerID: "group1",
 					secrets: []types.NamespacedName{
 						{Name: "secret-2", Namespace: "ns-2"},
 						{Name: "secret-3", Namespace: "ns-3"},
@@ -118,10 +118,10 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 			},
 		},
 		{
-			testName: "Multiple group, delete all",
+			testName: "Multiple ingress consumers, delete all",
 			monitorSecretsCall: []monitorSecretsCall{
 				{
-					groupID: "group1",
+					consumerID: "group1",
 					secrets: []types.NamespacedName{
 						{Name: "secret-1", Namespace: "ns-1"},
 						{Name: "secret-2", Namespace: "ns-2"},
@@ -129,7 +129,7 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 					},
 				},
 				{
-					groupID: "group2",
+					consumerID: "group2",
 					secrets: []types.NamespacedName{
 						{Name: "secret-2", Namespace: "ns-2"},
 						{Name: "secret-3", Namespace: "ns-3"},
@@ -137,15 +137,155 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 					},
 				},
 				{
-					groupID: "group1",
-					secrets: []types.NamespacedName{},
+					consumerID: "group1",
+					secrets:    []types.NamespacedName{},
 				},
 				{
-					groupID: "group2",
-					secrets: []types.NamespacedName{},
+					consumerID: "group2",
+					secrets:    []types.NamespacedName{},
 				},
 			},
 			wantSecrets: []types.NamespacedName{},
+		},
+		{
+			testName: "multiple gateways, overlapping secrets",
+			monitorSecretsCall: []monitorSecretsCall{
+				{
+					consumerID: "gw-1",
+					secrets: []types.NamespacedName{
+						{Name: "oidc-secret-1", Namespace: "auth-ns"},
+						{Name: "shared-secret", Namespace: "shared-ns"},
+					},
+				},
+				{
+					consumerID: "gw-2",
+					secrets: []types.NamespacedName{
+						{Name: "shared-secret", Namespace: "shared-ns"},
+						{Name: "oidc-secret-2", Namespace: "auth-ns"},
+					},
+				},
+				{
+					consumerID: "gw-3",
+					secrets: []types.NamespacedName{
+						{Name: "prod-secret", Namespace: "production"},
+						{Name: "shared-secret", Namespace: "shared-ns"},
+					},
+				},
+			},
+			wantSecrets: []types.NamespacedName{
+				{Name: "oidc-secret-1", Namespace: "auth-ns"},
+				{Name: "shared-secret", Namespace: "shared-ns"},
+				{Name: "oidc-secret-2", Namespace: "auth-ns"},
+				{Name: "prod-secret", Namespace: "production"},
+			},
+		},
+		{
+			testName: "multiple gateways, with deletion",
+			monitorSecretsCall: []monitorSecretsCall{
+				{
+					consumerID: "gw-1",
+					secrets: []types.NamespacedName{
+						{Name: "oidc-secret-1", Namespace: "auth-ns"},
+						{Name: "shared-secret", Namespace: "shared-ns"},
+					},
+				},
+				{
+					consumerID: "gw-2",
+					secrets: []types.NamespacedName{
+						{Name: "shared-secret", Namespace: "shared-ns"},
+						{Name: "oidc-secret-2", Namespace: "auth-ns"},
+					},
+				},
+				{
+					consumerID: "gw-3",
+					secrets: []types.NamespacedName{
+						{Name: "prod-secret", Namespace: "production"},
+						{Name: "shared-secret", Namespace: "shared-ns"},
+					},
+				},
+				// Delete the first gateway configuration
+				{
+					consumerID: "gw-1",
+					secrets:    []types.NamespacedName{},
+				},
+			},
+			wantSecrets: []types.NamespacedName{
+				{Name: "shared-secret", Namespace: "shared-ns"}, // Still used by gw-2 and gw-3
+				{Name: "oidc-secret-2", Namespace: "auth-ns"},   // Still used by gw-2
+				{Name: "prod-secret", Namespace: "production"},  // Still used by gw-3
+			},
+		},
+		{
+			testName: "Cross-controller cleanup - ingress removed, multiple gateways remain",
+			monitorSecretsCall: []monitorSecretsCall{
+				{
+					consumerID: "ig-group1",
+					secrets: []types.NamespacedName{
+						{Name: "shared-secret", Namespace: "ns-1"},
+						{Name: "ingress-only-secret", Namespace: "ns-1"},
+					},
+				},
+				{
+					consumerID: "gw-1",
+					secrets: []types.NamespacedName{
+						{Name: "shared-secret", Namespace: "ns-1"},
+						{Name: "gateway-secret-1", Namespace: "ns-2"},
+					},
+				},
+				{
+					consumerID: "gw-2",
+					secrets: []types.NamespacedName{
+						{Name: "shared-secret", Namespace: "ns-1"},
+						{Name: "gateway-secret-2", Namespace: "ns-3"},
+					},
+				},
+				// Remove ingress consumer
+				{
+					consumerID: "ig-group1",
+					secrets:    []types.NamespacedName{},
+				},
+			},
+			wantSecrets: []types.NamespacedName{
+				{Name: "shared-secret", Namespace: "ns-1"},    // Should still exist for both gateways
+				{Name: "gateway-secret-1", Namespace: "ns-2"}, // Should still exist for gw 1
+				{Name: "gateway-secret-2", Namespace: "ns-3"}, // Should still exist for gw 2
+			},
+		},
+		{
+			testName: "Cross-controller cleanup - one gateway removed, ingress and other gateway remain",
+			monitorSecretsCall: []monitorSecretsCall{
+				{
+					consumerID: "ig-group1",
+					secrets: []types.NamespacedName{
+						{Name: "shared-secret", Namespace: "ns-1"},
+						{Name: "ingress-only-secret", Namespace: "ns-1"},
+					},
+				},
+				{
+					consumerID: "gw-1",
+					secrets: []types.NamespacedName{
+						{Name: "shared-secret", Namespace: "ns-1"},
+						{Name: "gateway-secret-1", Namespace: "ns-2"},
+					},
+				},
+				{
+					consumerID: "gw-2",
+					secrets: []types.NamespacedName{
+						{Name: "shared-secret", Namespace: "ns-1"},
+						{Name: "gateway-secret-2", Namespace: "ns-3"},
+					},
+				},
+				// Remove one gateway consumer
+				{
+					consumerID: "gw-1",
+					secrets:    []types.NamespacedName{},
+				},
+			},
+			wantSecrets: []types.NamespacedName{
+				{Name: "shared-secret", Namespace: "ns-1"},       // Should still exist for ingress and gw 2
+				{Name: "ingress-only-secret", Namespace: "ns-1"}, // Should still exist for ingress
+				{Name: "gateway-secret-2", Namespace: "ns-3"},    // Should still exist for gw 2
+			},
 		},
 	}
 	for _, tt := range tests {
@@ -155,7 +295,7 @@ func Test_defaultSecretsManager_MonitorSecrets(t *testing.T) {
 			secretsManager := NewSecretsManager(fakeClient, secretsEventChan, logr.New(&log.NullLogSink{}))
 
 			for _, call := range tt.monitorSecretsCall {
-				secretsManager.MonitorSecrets(call.groupID, call.secrets)
+				secretsManager.MonitorSecrets(call.consumerID, call.secrets)
 			}
 			assert.Equal(t, len(tt.wantSecrets), len(secretsManager.secretMap))
 			for _, want := range tt.wantSecrets {

@@ -1,10 +1,15 @@
 package routeutils
 
 import (
+	"context"
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/stretchr/testify/assert"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	elbv2gw "sigs.k8s.io/aws-load-balancer-controller/apis/gateway/v1beta1"
 	elbv2model "sigs.k8s.io/aws-load-balancer-controller/pkg/model/elbv2"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"testing"
 )
@@ -424,7 +429,7 @@ func Test_buildAuthenticateCognitoAction(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := buildAuthenticateCognitoAction(tt.config)
+			got, _, err := buildAuthenticateCognitoAction(tt.config)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -435,6 +440,228 @@ func Test_buildAuthenticateCognitoAction(t *testing.T) {
 			assert.NoError(t, err)
 			assert.NotNil(t, got)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+func Test_buildAuthenticateOIDCAction(t *testing.T) {
+	issuer := "https://example.okta.com"
+	authzEndpoint := "https://example.okta.com/oauth2/v1/authorize"
+	tokenEndpoint := "https://example.okta.com/oauth2/v1/token"
+	userInfoEndpoint := "https://example.okta.com/oauth2/v1/userinfo"
+	scope := "openid profile"
+	sessionCookieName := "AWSELBAuthSessionCookie"
+	sessionTimeout := int64(604800)
+	authRequestExtraParams := map[string]string{
+		"prompt":  "login",
+		"display": "page",
+	}
+
+	authenticateBehavior := elbv2gw.AuthenticateOidcActionConditionalBehaviorEnumAuthenticate
+	//allowBehavior := elbv2gw.AuthenticateOidcActionConditionalBehaviorEnumAllow
+	//denyBehavior := elbv2gw.AuthenticateOidcActionConditionalBehaviorEnumDeny
+
+	secretName := "oidc-secret"
+	secretNamespace := "test-namespace"
+	clientID := "test-client-id"
+	clientSecret := "test-client-secret"
+
+	tests := []struct {
+		name          string
+		config        *elbv2gw.AuthenticateOidcActionConfig
+		secretData    map[string][]byte
+		secretExists  bool
+		want          *elbv2model.Action
+		wantSecretRef *types.NamespacedName
+		wantErr       bool
+	}{
+		{
+			name: "authenticate OIDC with all fields",
+			config: &elbv2gw.AuthenticateOidcActionConfig{
+				Issuer:                issuer,
+				AuthorizationEndpoint: authzEndpoint,
+				TokenEndpoint:         tokenEndpoint,
+				UserInfoEndpoint:      userInfoEndpoint,
+				Secret: &elbv2gw.Secret{
+					Name:      secretName,
+					Namespace: &secretNamespace,
+				},
+				AuthenticationRequestExtraParams: &authRequestExtraParams,
+				OnUnauthenticatedRequest:         &authenticateBehavior,
+				Scope:                            &scope,
+				SessionCookieName:                &sessionCookieName,
+				SessionTimeout:                   &sessionTimeout,
+			},
+			secretData: map[string][]byte{
+				"clientID":     []byte(clientID),
+				"clientSecret": []byte(clientSecret),
+			},
+			secretExists: true,
+			want: &elbv2model.Action{
+				Type: elbv2model.ActionTypeAuthenticateOIDC,
+				AuthenticateOIDCConfig: &elbv2model.AuthenticateOIDCActionConfig{
+					Issuer:                           issuer,
+					AuthorizationEndpoint:            authzEndpoint,
+					TokenEndpoint:                    tokenEndpoint,
+					UserInfoEndpoint:                 userInfoEndpoint,
+					ClientID:                         clientID,
+					ClientSecret:                     clientSecret,
+					AuthenticationRequestExtraParams: authRequestExtraParams,
+					OnUnauthenticatedRequest:         elbv2model.AuthenticateOIDCActionConditionalBehavior(authenticateBehavior),
+					Scope:                            &scope,
+					SessionCookieName:                &sessionCookieName,
+					SessionTimeout:                   &sessionTimeout,
+				},
+			},
+			wantSecretRef: &types.NamespacedName{
+				Namespace: secretNamespace,
+				Name:      secretName,
+			},
+			wantErr: false,
+		},
+		{
+			name: "authenticate OIDC with backward compatible clientId key",
+			config: &elbv2gw.AuthenticateOidcActionConfig{
+				Issuer:                issuer,
+				AuthorizationEndpoint: authzEndpoint,
+				TokenEndpoint:         tokenEndpoint,
+				UserInfoEndpoint:      userInfoEndpoint,
+				Secret: &elbv2gw.Secret{
+					Name: secretName,
+				},
+				AuthenticationRequestExtraParams: &map[string]string{},
+				OnUnauthenticatedRequest:         &authenticateBehavior,
+			},
+			secretData: map[string][]byte{
+				"clientId":     []byte(clientID), // lowercase 'd' for backward compatibility
+				"clientSecret": []byte(clientSecret),
+			},
+			secretExists: true,
+			want: &elbv2model.Action{
+				Type: elbv2model.ActionTypeAuthenticateOIDC,
+				AuthenticateOIDCConfig: &elbv2model.AuthenticateOIDCActionConfig{
+					Issuer:                           issuer,
+					AuthorizationEndpoint:            authzEndpoint,
+					TokenEndpoint:                    tokenEndpoint,
+					UserInfoEndpoint:                 userInfoEndpoint,
+					ClientID:                         clientID,
+					ClientSecret:                     clientSecret,
+					AuthenticationRequestExtraParams: map[string]string{},
+					OnUnauthenticatedRequest:         elbv2model.AuthenticateOIDCActionConditionalBehaviorAuthenticate,
+					Scope:                            nil,
+					SessionCookieName:                nil,
+					SessionTimeout:                   nil,
+				},
+			},
+			wantSecretRef: &types.NamespacedName{
+				Namespace: secretNamespace, // Should use route namespace when not specified
+				Name:      secretName,
+			},
+			wantErr: false,
+		},
+		{
+			name: "secret not found",
+			config: &elbv2gw.AuthenticateOidcActionConfig{
+				Issuer:                issuer,
+				AuthorizationEndpoint: authzEndpoint,
+				TokenEndpoint:         tokenEndpoint,
+				UserInfoEndpoint:      userInfoEndpoint,
+				Secret: &elbv2gw.Secret{
+					Name: "nonexistent-secret",
+				},
+				AuthenticationRequestExtraParams: &map[string]string{},
+				OnUnauthenticatedRequest:         &authenticateBehavior,
+			},
+			secretExists:  false,
+			want:          nil,
+			wantSecretRef: nil,
+			wantErr:       true,
+		},
+		{
+			name: "missing clientID in secret",
+			config: &elbv2gw.AuthenticateOidcActionConfig{
+				Issuer:                issuer,
+				AuthorizationEndpoint: authzEndpoint,
+				TokenEndpoint:         tokenEndpoint,
+				UserInfoEndpoint:      userInfoEndpoint,
+				Secret: &elbv2gw.Secret{
+					Name: secretName,
+				},
+				AuthenticationRequestExtraParams: &map[string]string{},
+				OnUnauthenticatedRequest:         &authenticateBehavior,
+			},
+			secretData: map[string][]byte{
+				"clientSecret": []byte(clientSecret),
+				// missing clientID
+			},
+			secretExists:  true,
+			want:          nil,
+			wantSecretRef: nil,
+			wantErr:       true,
+		},
+		{
+			name: "missing clientSecret in secret",
+			config: &elbv2gw.AuthenticateOidcActionConfig{
+				Issuer:                issuer,
+				AuthorizationEndpoint: authzEndpoint,
+				TokenEndpoint:         tokenEndpoint,
+				UserInfoEndpoint:      userInfoEndpoint,
+				Secret: &elbv2gw.Secret{
+					Name: secretName,
+				},
+				AuthenticationRequestExtraParams: &map[string]string{},
+				OnUnauthenticatedRequest:         &authenticateBehavior,
+			},
+			secretData: map[string][]byte{
+				"clientID": []byte(clientID),
+				// missing clientSecret
+			},
+			secretExists:  true,
+			want:          nil,
+			wantSecretRef: nil,
+			wantErr:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			// Create mock k8s client
+			k8sClient := fake.NewClientBuilder().Build()
+
+			// Create mock route
+			mockRoute := &MockRoute{
+				Kind:      HTTPRouteKind,
+				Namespace: secretNamespace,
+				Name:      "test-route",
+			}
+
+			// Create secret if it should exist
+			if tt.secretExists {
+				secret := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      secretName,
+						Namespace: secretNamespace,
+					},
+					Data: tt.secretData,
+				}
+				err := k8sClient.Create(ctx, secret)
+				assert.NoError(t, err)
+			}
+
+			got, gotSecretRef, err := buildAuthenticateOIDCAction(ctx, tt.config, mockRoute, k8sClient)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, got)
+				assert.Nil(t, gotSecretRef)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+			assert.Equal(t, tt.wantSecretRef, gotSecretRef)
 		})
 	}
 }

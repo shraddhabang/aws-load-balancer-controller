@@ -1,27 +1,32 @@
 package routeutils
 
 import (
+	"context"
 	"fmt"
 	awssdk "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	elbv2gw "sigs.k8s.io/aws-load-balancer-controller/apis/gateway/v1beta1"
 	elbv2model "sigs.k8s.io/aws-load-balancer-controller/pkg/model/elbv2"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // BuildRulePreRoutingActions returns pre-routing action for rule
 // The assumption is that the ListenerRuleConfiguration CRD makes sure we only have one of the actions (authenticate-cognito, authenticate-oidc) defined
-func BuildRulePreRoutingAction(route RouteDescriptor, crdPreRoutingAction *elbv2gw.Action) (*elbv2model.Action, error) {
+func BuildRulePreRoutingAction(ctx context.Context, route RouteDescriptor, crdPreRoutingAction *elbv2gw.Action, k8sClient client.Client) (*elbv2model.Action, *types.NamespacedName, error) {
 	switch crdPreRoutingAction.Type {
 	case elbv2gw.ActionTypeAuthenticateOIDC:
-		return buildAuthenticateOIDCAction(crdPreRoutingAction.AuthenticateOIDCConfig, route)
+		return buildAuthenticateOIDCAction(ctx, crdPreRoutingAction.AuthenticateOIDCConfig, route, k8sClient)
 	case elbv2gw.ActionTypeAuthenticateCognito:
 		return buildAuthenticateCognitoAction(crdPreRoutingAction.AuthenticateCognitoConfig)
 
 	}
-	return nil, errors.Errorf("unsupported action type %s", crdPreRoutingAction.Type)
+	return nil, nil, errors.Errorf("unsupported action type %s", crdPreRoutingAction.Type)
 }
 
 // BuildRuleRoutingAction returns routing action for rule
@@ -71,7 +76,7 @@ func buildFixedResponseRoutingAction(fixedResponseConfig *elbv2gw.FixedResponseA
 	return &action, nil
 }
 
-func buildAuthenticateCognitoAction(authCognitoActionConfig *elbv2gw.AuthenticateCognitoActionConfig) (*elbv2model.Action, error) {
+func buildAuthenticateCognitoAction(authCognitoActionConfig *elbv2gw.AuthenticateCognitoActionConfig) (*elbv2model.Action, *types.NamespacedName, error) {
 	return &elbv2model.Action{
 		Type: elbv2model.ActionTypeAuthenticateCognito,
 		AuthenticateCognitoConfig: &elbv2model.AuthenticateCognitoActionConfig{
@@ -84,12 +89,53 @@ func buildAuthenticateCognitoAction(authCognitoActionConfig *elbv2gw.Authenticat
 			SessionCookieName:                authCognitoActionConfig.SessionCookieName,
 			SessionTimeout:                   authCognitoActionConfig.SessionTimeout,
 		},
-	}, nil
+	}, nil, nil
 }
 
-func buildAuthenticateOIDCAction(autheticateOIDCActionConfig *elbv2gw.AuthenticateOidcActionConfig, route RouteDescriptor) (*elbv2model.Action, error) {
-	// TODO
-	return nil, nil
+func buildAuthenticateOIDCAction(ctx context.Context, authenticateOIDCActionConfig *elbv2gw.AuthenticateOidcActionConfig, route RouteDescriptor, k8sClient client.Client) (*elbv2model.Action, *types.NamespacedName, error) {
+	namespace := route.GetRouteNamespacedName().Namespace
+	if authenticateOIDCActionConfig.Secret.Namespace != nil {
+		namespace = awssdk.ToString(authenticateOIDCActionConfig.Secret.Namespace)
+	}
+	secretKey := types.NamespacedName{
+		Namespace: namespace,
+		Name:      authenticateOIDCActionConfig.Secret.Name,
+	}
+	secret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, secretKey, secret); err != nil {
+		return nil, nil, err
+	}
+	rawClientID, ok := secret.Data["clientID"]
+	// AWSALBIngressController looks for clientId, we should be backwards-compatible here.
+	if !ok {
+		rawClientID, ok = secret.Data["clientId"]
+	}
+	if !ok {
+		return nil, nil, errors.Errorf("missing clientID, secret: %v", secretKey)
+	}
+	rawClientSecret, ok := secret.Data["clientSecret"]
+	if !ok {
+		return nil, nil, errors.Errorf("missing clientSecret, secret: %v", secretKey)
+	}
+
+	clientID := strings.TrimRightFunc(string(rawClientID), unicode.IsSpace)
+	clientSecret := strings.TrimRightFunc(string(rawClientSecret), unicode.IsControl)
+	return &elbv2model.Action{
+		Type: elbv2model.ActionTypeAuthenticateOIDC,
+		AuthenticateOIDCConfig: &elbv2model.AuthenticateOIDCActionConfig{
+			Issuer:                           authenticateOIDCActionConfig.Issuer,
+			AuthorizationEndpoint:            authenticateOIDCActionConfig.AuthorizationEndpoint,
+			TokenEndpoint:                    authenticateOIDCActionConfig.TokenEndpoint,
+			UserInfoEndpoint:                 authenticateOIDCActionConfig.UserInfoEndpoint,
+			ClientID:                         clientID,
+			ClientSecret:                     clientSecret,
+			AuthenticationRequestExtraParams: *authenticateOIDCActionConfig.AuthenticationRequestExtraParams,
+			OnUnauthenticatedRequest:         elbv2model.AuthenticateOIDCActionConditionalBehavior(*authenticateOIDCActionConfig.OnUnauthenticatedRequest),
+			Scope:                            authenticateOIDCActionConfig.Scope,
+			SessionCookieName:                authenticateOIDCActionConfig.SessionCookieName,
+			SessionTimeout:                   authenticateOIDCActionConfig.SessionTimeout,
+		},
+	}, &secretKey, nil
 }
 
 func buildForwardRoutingAction(routingAction *elbv2gw.Action, targetGroupTuples []elbv2model.TargetGroupTuple) (*elbv2model.Action, error) {

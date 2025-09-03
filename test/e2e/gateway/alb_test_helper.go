@@ -12,7 +12,7 @@ type ALBTestStack struct {
 	albResourceStack *albResourceStack
 }
 
-func (s *ALBTestStack) Deploy(ctx context.Context, auxiliaryStack *auxiliaryResourceStack, f *framework.Framework, gwListeners []gwv1.Listener, httprs []*gwv1.HTTPRoute, lbConfSpec elbv2gw.LoadBalancerConfigurationSpec, tgConfSpec elbv2gw.TargetGroupConfigurationSpec, lrConfSpec elbv2gw.ListenerRuleConfigurationSpec, readinessGateEnabled bool) error {
+func (s *ALBTestStack) Deploy(ctx context.Context, auxiliaryStack *auxiliaryResourceStack, f *framework.Framework, gwListeners []gwv1.Listener, httprs []*gwv1.HTTPRoute, lbConfSpec elbv2gw.LoadBalancerConfigurationSpec, tgConfSpec elbv2gw.TargetGroupConfigurationSpec, lrConfSpec elbv2gw.ListenerRuleConfigurationSpec, secret *testOIDCSecret, readinessGateEnabled bool) error {
 	if auxiliaryStack != nil {
 		gwListeners = append(gwListeners, gwv1.Listener{
 			Name:     "other-ns",
@@ -31,7 +31,7 @@ func (s *ALBTestStack) Deploy(ctx context.Context, auxiliaryStack *auxiliaryReso
 	tgc := buildTargetGroupConfig(defaultTgConfigName, tgConfSpec, svc)
 	lrc := buildListenerRuleConfig(defaultLRConfigName, lrConfSpec)
 
-	s.albResourceStack = newALBResourceStack(dp, svc, gwc, gw, lbc, tgc, lrc, httprs, "alb-gateway-e2e", readinessGateEnabled)
+	s.albResourceStack = newALBResourceStack(dp, svc, gwc, gw, lbc, tgc, lrc, httprs, secret, "alb-gateway-e2e", readinessGateEnabled)
 
 	return s.albResourceStack.Deploy(ctx, f)
 }
