@@ -350,7 +350,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		err = listenerRuleConfigurationReconciler.SetupWatches(ctx, listenerRuleCfgController, mgr, nil)
+		err = listenerRuleConfigurationReconciler.SetupWatches(ctx, listenerRuleCfgController, mgr, clientSet)
 		if err != nil {
 			setupLog.Error(err, "Unable to set up ListenerRuleConfiguration Watches")
 			os.Exit(1)

@@ -2,7 +2,7 @@
 MAKEFILE_PATH = $(dir $(realpath -s $(firstword $(MAKEFILE_LIST))))
 
 # Image URL to use all building/pushing image targets
-IMG ?= 238177055437.dkr.ecr.us-east-1.amazonaws.com/shrabang-dev:v2.26.56
+IMG ?= 238177055437.dkr.ecr.us-east-1.amazonaws.com/shrabang-dev:v2.26.65
 # Image URL to use for builder stage in Docker build
 GOLANG_VERSION ?= $(shell cat .go-version)
 BUILD_IMAGE ?= public.ecr.aws/docker/library/golang:$(GOLANG_VERSION)

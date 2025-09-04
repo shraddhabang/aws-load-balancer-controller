@@ -294,10 +294,17 @@ type ListenerRuleConfigurationSpec struct {
 
 // ListenerRuleConfigurationStatus defines the observed state of ListenerRuleConfiguration
 type ListenerRuleConfigurationStatus struct {
-
 	// The observed generation of the rule configuration
 	// +optional
 	ObservedGeneration *int64 `json:"observedGeneration,omitempty"`
+
+	// Accepted indicates whether ListenerRuleConfiguration is valid
+	// +optional
+	Accepted *bool `json:"accepted,omitempty"`
+
+	// Message provides details about the current state
+	// +optional
+	Message *string `json:"message,omitempty"`
 }
 
 // +kubebuilder:object:root=true

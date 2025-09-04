@@ -377,6 +377,13 @@ spec:
             description: ListenerRuleConfigurationStatus defines the observed state
               of ListenerRuleConfiguration
             properties:
+              accepted:
+                description: Accepted indicates whether ListenerRuleConfiguration
+                  is valid
+                type: boolean
+              message:
+                description: Message provides details about the current state
+                type: string
               observedGeneration:
                 description: The observed generation of the rule configuration
                 format: int64
